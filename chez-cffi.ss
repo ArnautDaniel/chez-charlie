@@ -24,6 +24,7 @@
 (define-ftype uint64 integer-64)
 (define-ftype size-t uint32)
 (define-ftype file (struct))
+(define-ftype void void*)
 
 ;;;Generate our sexps
 (define (gen-cffi-sexp pathname output-name)
@@ -31,8 +32,6 @@
       (system (string-append cffi " " pathname " -D sexp -o "
 			     output-name ".sexp"))))
       
-;;;
-
 (define (get-cffi-types pathname)
   (let ((file (open-input-file pathname)))
     (let looper ((data (get-line file)))
@@ -50,11 +49,40 @@
 
 (define (put-cffi-types pathname)
   (let ((transform (produce-cffi-types pathname))
-        (ofu (open-output-file (string-append pathname ".ss"))))
+        (ofu (open-output-file (string-append pathname "-types.ss"))))
     (map (lambda (k) (begin 
                        (write k ofu)
                        (newline ofu))) transform)
     (flush-output-port ofu)))
+
+(define (put-cffi-functions pathname)
+  (let ((transform (produce-cffi-functions pathname))
+        (ofu (open-output-file (string-append pathname "-functions.ss"))))
+    (map (lambda (k)
+           (begin 
+             (write k ofu)
+             (newline ofu)))
+         transform)
+    (flush-output-port ofu)))
+
+(define (produce-cffi-functions pathname)
+  (let* ((data (get-cffi-types pathname))
+         (funcs (filter-symbol data 'function)))
+    (process-funcs funcs)))
+
+(define (process-funcs args)
+  (map (lambda (c) (process-func-indi c)) args))
+
+(define (process-func-indi args)
+  (let ((name (string->symbol (charlie-string-cut (cadr args))))
+        (args (caddr args))
+        (returnv (cadddr args)))
+    `(define-ftype ,name (function ,(process-func-args args)
+                                        ,(car (charlie-arg-eval  (list returnv)))))))
+
+(define (process-func-args args)
+  (map (lambda (d) (cadr d))
+       (map (lambda (k) (charlie-arg-eval k)) args)))
 
 (define (filter-symbol lst sym)
   (filter (lambda (x) (symbol=? (car x) sym)) lst))
@@ -105,7 +133,7 @@
 
 (define (process-final-enum name args dahs)
   (let ((datalst (get-hash-table dahs args 0)))
-    `(define-enumeration* ,name ,(map (lambda (k)
+    `(define-enumeration* ,(charlie-symbol-cut name) ,(map (lambda (k)
 					(car k)) datalst))))
 
 (define (process-struct-eval args dahs)
@@ -117,7 +145,6 @@
             (cons 'struct (map  (lambda (k) (charlie-arg-eval k))
                       hashgrab))))))
 
-;;;Fix this idiot :P
 (define (process-indi typedef dahs)
   (let ((name (typedef-name typedef))
 	(args (typedef-args typedef)))
@@ -127,13 +154,14 @@
              (charlie-sym? "eval-enum"  (car evaled)))
         (process-final-enum name (cadr evaled) dahs))
        ((charlie-sym? "struct-eval" (car evaled))
-        `(define-ftype ,name ,(process-struct-eval (cadr evaled) dahs)))
+        `(define-ftype ,(charlie-symbol-cut name) ,(process-struct-eval (cadr evaled) dahs)))
        (else
-        `(define-ftype ,name ,(car evaled)))))))
+        `(define-ftype ,(charlie-symbol-cut name) ,(car evaled)))))))
 
 (define (charlie-arg-eval args)
   (cond
    ((null? args) '())
+   ((atom? args) (charlie-symbol-cut args))
    ((list? (car args))
     (append (charlie-list-eval (car args))
 	    (charlie-arg-eval (cdr args))))
@@ -150,7 +178,8 @@
    ((or (charlie-sym? ":struct" (car arg))
 	(charlie-sym? "struct" (car arg)))
     `(struct-eval ,(cdr arg)))
-   ((charlie-sym? ":pointer" (car arg))
+   ((or (charlie-sym? ":pointer" (car arg))
+        (charlie-sym? "pointer" (car arg)))
     `((* ,(car (charlie-arg-eval (cdr arg))))))
    (else
     (charlie-arg-eval arg))))
@@ -160,3 +189,6 @@
   (if (string=? ":" (substring x 0 1))
       (string-downcase (substring x 1 (string-length x)))
       (string-downcase x)))
+
+(define (charlie-symbol-cut x)
+  (string->symbol (charlie-string-cut (symbol->string x))))

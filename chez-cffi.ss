@@ -74,11 +74,13 @@
   (map (lambda (c) (process-func-indi c)) args))
 
 (define (process-func-indi args)
-  (let ((name (string->symbol (charlie-string-cut (cadr args))))
+  (let ((name  (cadr args))
         (args (caddr args))
         (returnv (cadddr args)))
-    `(define-ftype ,name (function ,(process-func-args args)
-                                        ,(car (charlie-arg-eval  (list returnv)))))))
+    `(define ,(string->symbol (charlie-string-cut name))
+       (foreign-procedure ,name
+                          ,(process-func-args args)
+                          ,(car (charlie-arg-eval  (list returnv)))))))
 
 (define (process-func-args args)
   (map (lambda (d) (cadr d))

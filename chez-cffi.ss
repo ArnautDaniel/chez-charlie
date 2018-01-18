@@ -24,6 +24,7 @@
 (define-ftype uint64 integer-64)
 (define-ftype size-t uint32)
 (define-ftype file (struct))
+
 ;;;Generate our sexps
 (define (gen-cffi-sexp pathname output-name)
   (if (string? pathname)
@@ -46,6 +47,14 @@
 	  (looper (get-line file)))))
        (else
 	(looper (get-line file)))))))
+
+(define (put-cffi-types pathname)
+  (let ((transform (produce-cffi-types pathname))
+        (ofu (open-output-file (string-append pathname ".ss"))))
+    (map (lambda (k) (begin 
+                       (write k ofu)
+                       (newline ofu))) transform)
+    (flush-output-port ofu)))
 
 (define (filter-symbol lst sym)
   (filter (lambda (x) (symbol=? (car x) sym)) lst))
@@ -72,7 +81,7 @@
        (dahs (make-hash-table)))
     (process-enums enums dahs)
     (process-structs structs dahs)
-    (typedef-false-filter (process-typedefs typedefs dahs))))
+    (process-typedefs typedefs dahs)))
 
 (define (process-enums enums dahs)
   (map (lambda (c) (put-hash-table! dahs (caddr c)
@@ -99,20 +108,28 @@
     `(define-enumeration* ,name ,(map (lambda (k)
 					(car k)) datalst))))
 
+(define (process-struct-eval args dahs)
+  (let ((hashgrab (get-hash-table dahs (car args) 0)))
+    (if (equal? 0 hashgrab)
+        `(struct)
+        (if (null? hashgrab)
+            `(struct)
+            (cons 'struct (map  (lambda (k) (charlie-arg-eval k))
+                      hashgrab))))))
+
 ;;;Fix this idiot :P
 (define (process-indi typedef dahs)
   (let ((name (typedef-name typedef))
 	(args (typedef-args typedef)))
-    (if (not (equal? 0 (get-hash-table dahs name 0)))
-	'nope
-	(let ((evaled (charlie-arg-eval args)))
-	  (cond
-	   ((and (not (= (length evaled) 1))
-		 (charlie-sym? "eval-enum"  (car evaled)))
-	    (process-final-enum name (cadr evaled) dahs))
-	       (else
-		`(define-ftype ,name ,(car evaled))))))))
-
+    (let ((evaled (charlie-arg-eval args)))
+      (cond
+       ((and (not (= (length evaled) 1))
+             (charlie-sym? "eval-enum"  (car evaled)))
+        (process-final-enum name (cadr evaled) dahs))
+       ((charlie-sym? "struct-eval" (car evaled))
+        `(define-ftype ,name ,(process-struct-eval (cadr evaled) dahs)))
+       (else
+        `(define-ftype ,name ,(car evaled)))))))
 
 (define (charlie-arg-eval args)
   (cond
@@ -132,13 +149,12 @@
     `(eval-enum ,(caddr arg)))
    ((or (charlie-sym? ":struct" (car arg))
 	(charlie-sym? "struct" (car arg)))
-    (cond
-     ((>= 2 (length arg))
-      `((struct)))
-     (else
-      `((struct)))))
+    `(struct-eval ,(cdr arg)))
+   ((charlie-sym? ":pointer" (car arg))
+    `((* ,(car (charlie-arg-eval (cdr arg))))))
    (else
-    `(unsupported!))))
+    (charlie-arg-eval arg))))
+
    
 (define (charlie-string-cut x)
   (if (string=? ":" (substring x 0 1))

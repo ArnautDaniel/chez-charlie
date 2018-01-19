@@ -5,15 +5,19 @@
 (define cffi "c2ffi")
 
 ;;;TODO
-;;;Structure definitions
-;;;Function definitions
-;;;Expand type conversions
 ;;;Lispify names (i.e. replace _ with -)
-;;;also lowercase everything
 
-;;;Doneish
-;;;Enum definitions
-;;;Basic type definitions
+;;;Produce sls file automatically with exported functions
+;;;and a function that allows you to load the shared library
+;;;due to the foreign-procedure call you have to load the library
+;;;before you can load the types
+
+;;;enumerations have to have a uint8 type associated with them
+;;;so that if they are in the function call they'll work
+;;;the actual enumeration will have a "-e" appended to it
+
+;;;A way to name which particular functions you want translated
+;;;Right now it's hardcoded for sdl_mixer
 
 (define-ftype uint8 unsigned-8)
 (define-ftype uint16 unsigned-16)
@@ -25,6 +29,14 @@
 (define-ftype size-t uint32)
 (define-ftype file (struct))
 (define-ftype void void*)
+(define-ftype sdl_bool uint8)
+(define-ftype sdl_rwops uint8)
+(define-ftype sdl_version uint8)
+
+;;;Figure out method for unknown ftypes
+;;;either reference the original sexp
+;;;or interactivelly ask the user for a value
+
 
 ;;;Generate our sexps
 (define (gen-cffi-sexp pathname output-name)
